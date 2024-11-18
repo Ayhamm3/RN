@@ -3,83 +3,30 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stdio.h>
+#include "headers/webserver.h"
+#include "headers/WebSocket.h"
 
-int erstelle_socket(const char *ip, const char *port);
-int warte_auf_verbindungen(int server_socket);
-
-int main(int argn, char *argumente[]) {
-    if (argn != 3) {
+int main(int argn, char *args[]) {
+    if (argn != 3)
+    {
         printf("Invalid arguments.");
         return 1;
     }
 
-    const char *ip_adresse = argumente[1];
-    const char *port_nummer = argumente[2];
+    const char *ip_adresse = args[1];
+    const char *port_nummer = args[2];
 
-    int server_socket = erstelle_socket(ip_adresse, port_nummer);
-    if (server_socket == -1) {
+    Websocket* server_socket = create_socket(ip_adresse, port_nummer);
+    if (server_socket == NULL)
+    {
         printf("Unable to create server socket!");
         return 2;
     }
 
-    int status = warte_auf_verbindungen(server_socket);
-    close(server_socket);
+    bool status = connect_socket(server_socket);
+    printf("%b", status);
 
     return status;
 }
 
-//Erstellt und konfiguriert Socket
-int erstelle_socket(const char *ip, const char *port) {
-    struct addrinfo hinweise = {0}, *addr_info;
-    hinweise.ai_family = AF_INET;
-    hinweise.ai_socktype = SOCK_STREAM;
-    hinweise.ai_flags = AI_PASSIVE;
 
-    if (getaddrinfo(ip, port, &hinweise, &addr_info) != 0) {
-        return -1;
-    }
-
-    int socket_handle = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol);
-    if (socket_handle == -1) {
-        freeaddrinfo(addr_info);
-        return -1;
-    }
-
-    int option = 1;
-    if (setsockopt(socket_handle, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
-        close(socket_handle);
-        freeaddrinfo(addr_info);
-        return -1;
-    }
-
-    if (bind(socket_handle, addr_info->ai_addr, addr_info->ai_addrlen) == -1) {
-        close(socket_handle);
-        freeaddrinfo(addr_info);
-        return -1;
-    }
-
-    freeaddrinfo(addr_info);
-    return socket_handle;
-}
-
-int warte_auf_verbindungen(int server_socket) {
-    if (listen(server_socket, 10) == -1) {
-        return 3;//Fehler
-    }
-
-    while (1) {
-        struct sockaddr_storage client_info;
-        socklen_t client_info_groesse = sizeof(client_info);
-        
-        //Akzeptiert neue Verbindungen n shit
-        int client_socket = accept(server_socket, (struct sockaddr *)&client_info, &client_info_groesse);
-        if (client_socket == -1) {
-            continue;//Fehler
-        }
-
-        //Verbindung erfolgreich
-        close(client_socket);
-    }
-
-    return 0;
-}
