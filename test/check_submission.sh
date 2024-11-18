@@ -28,7 +28,16 @@ EXTRACTED_SOURCE_DIR=$(find ${SOURCE_DIR} -maxdepth 1 -mindepth 1 -type d | head
 echo "Building submission..."
 BUILD_DIR=$(mktemp -d)
 cmake -S"${EXTRACTED_SOURCE_DIR}" -B${BUILD_DIR}
-cmake --build ${BUILD_DIR} -t webserver
+TARGET="webserver"
+EXECUTABLE="--executable ${BUILD_DIR}/webserver"
+if [[ "$1" == "praxis0" ]]; then
+	TARGET="hello_world"
+	EXECUTABLE="--executable ${BUILD_DIR}/hello_world"
+elif [[ "$1" == "praxis3" ]]; then
+	TARGET="zmq_distributor zmq_worker"
+	EXECUTABLE="--distributor_executable ${BUILD_DIR}/zmq_distributor --worker_executable ${BUILD_DIR}/zmq_worker"
+fi
+cmake --build ${BUILD_DIR} -t ${TARGET}
 
 echo "Executing tests..."
-python3 -m pytest -o cache_dir=${BUILD_DIR} --executable ${BUILD_DIR}/webserver ${TEST_SCRIPT}
+python3 -m pytest -o cache_dir=${BUILD_DIR} ${TEST_SCRIPT} ${EXECUTABLE}

@@ -2,12 +2,14 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <stdio.h>
 
 int erstelle_socket(const char *ip, const char *port);
 int warte_auf_verbindungen(int server_socket);
 
-int main(int anzahl_args, char *argumente[]) {
-    if (anzahl_args != 3) {
+int main(int argn, char *argumente[]) {
+    if (argn != 3) {
+        printf("Invalid arguments.");
         return 1;
     }
 
@@ -16,6 +18,7 @@ int main(int anzahl_args, char *argumente[]) {
 
     int server_socket = erstelle_socket(ip_adresse, port_nummer);
     if (server_socket == -1) {
+        printf("Unable to create server socket!");
         return 2;
     }
 

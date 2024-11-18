@@ -11,7 +11,7 @@ import urllib.request
 def bytes_available(socket):
     """Return number of bytes available to read on socket
 
-    This requires some magic, but can be via an ioctl. 
+    This requires some magic, but can be via an ioctl.
     """
 
     sock_size = array.array('i', [0])

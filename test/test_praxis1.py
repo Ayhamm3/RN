@@ -1,3 +1,7 @@
+"""
+Tests for RN Praxis 1
+"""
+
 import contextlib
 import re
 import socket
@@ -11,12 +15,19 @@ from util import KillOnExit, randbytes
 
 @pytest.fixture
 def webserver(request):
-    """Return a function for webservers
+    """
+    Return a callable function that spawns a webserver with the given arguments.
     """
     def runner(*args, **kwargs):
-        """Spawn a webserver
-        """
+        """Spawn a webserver with the given arguments."""
         return KillOnExit([request.config.getoption('executable'), *args], **kwargs)
+
+    @contextlib.contextmanager
+    def empty_context(*args, **kwargs):
+        yield  # No server initialization here, just an empty context that never fails
+
+    if request.config.getoption('debug_own'):
+        return empty_context
 
     return runner
 
@@ -192,10 +203,10 @@ def test_dynamic_content(webserver, port):
 
         conn.request('DELETE', path)
         response = conn.getresponse()
-        payload = response.read()
+        response.read()
         assert response.status in {200, 202, 204}, f"Deletion of '{path}' did not succeed"
 
         conn.request('GET', path)
         response = conn.getresponse()
-        payload = response.read()
+        response.read()
         assert response.status == 404, f"'{path}' should be missing"
