@@ -177,7 +177,7 @@ void handle_client(int client_socket)
         {
             *end = '\0'; // null term to isolate packet
             printf("HTTP Paket received: %s\n", start);
-            send(client_socket, response, strlen(response), 0);
+            handle_http_packet(client_socket, start);
             start = end + 4; // Skip \r\n...
         }
         strcpy(byte_cache, start); // Copy to cache
@@ -190,4 +190,66 @@ void handle_client(int client_socket)
         return;
     }
     close(client_socket);
+}
+
+/// Handles the http packet and sends an http status code
+/// \param packet packet to process
+/// \return HTTP status code
+int handle_http_packet(int client_socket, char *packet)
+{
+    char *line = strtok(packet, "\r\n"); // first line
+    char method[BUFFER_SIZE], uri[BUFFER_SIZE], version[BUFFER_SIZE];
+
+    //First line
+    if (!line || (sscanf(line, "%s %s %s", method, uri, version) != 3))
+    {
+        client_response(client_socket, 400, "Bad Request");
+        return 400;
+    }
+
+    printf("First line: method: %s uri: %s version: %s", method, uri, version);
+
+    //Header
+    // NULL here since strtok is already taking it from the first line request before
+    bool areHeadersValid = true;
+    while((line = strtok(NULL, "\r\n")))
+    {
+        const char *seperator = strchr(line, ':');
+        if (!seperator || seperator < line || *(seperator + 1) == '\0')
+        {
+            areHeadersValid = false;
+            break;
+        }
+    }
+    
+    if (!areHeadersValid)
+    {
+        client_response(client_socket, 400, "Bad Request");
+        return 400;
+    }
+
+    // Handle the method
+    if (strcmp(method, "GET") == 0)
+    {
+        client_response(client_socket, 404, "Not Found");
+        return 404;
+    }
+    else
+    {
+        client_response(client_socket, 501, "Not Implemented");
+        return 501;
+    }
+}
+
+void client_response(int client_socket, int status_code, const char *phrase)
+{
+    char response[BUFFER_SIZE];
+    snprintf(response, sizeof(response),
+             "HTTP/1.1 %d %s\r\n"
+             "Content-Length: %ld\r\n"
+             "Content-Type: text/plain\r\n\r\n"
+             "%s",
+             status_code, phrase, strlen(phrase), phrase);
+    send(client_socket, response, strlen(response), 0);
+    printf("Response sent: %s\n", response);
 }
