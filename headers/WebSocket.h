@@ -1,6 +1,9 @@
 #include <netdb.h>
 #include <stdbool.h>
 
+#define BUFFER_SIZE 1024
+
+
 typedef struct websocket
 {
     struct addrinfo *addressInfo;
@@ -16,3 +19,4 @@ void close_socket(Websocket* socket);
 /// \param socket Socket to use (see create_socket)
 /// \return If success return true, otherwise false.
 bool connect_socket(Websocket* socket);
+void handle_client(int client_socket);

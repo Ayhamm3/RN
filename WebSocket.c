@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <malloc.h>
+#include <arpa/inet.h>
+#include <string.h>
 
 Websocket* create_socket(const char *ip, const char *port) {
     struct addrinfo hints = {0}, *addr_info;
@@ -13,7 +15,7 @@ Websocket* create_socket(const char *ip, const char *port) {
 
     if (getaddrinfo(ip, port, &hints, &addr_info) != 0)
     {
-        printf("create_socket failed at getaddrinfo!");
+        printf("create_socket failed at getaddrinfo!\n");
         return NULL;
     }
 
@@ -21,16 +23,18 @@ Websocket* create_socket(const char *ip, const char *port) {
     if (socket_handle == -1)
     {
         freeaddrinfo(addr_info);
-        printf("create_socket failed at socket_handle!");
+        printf("create_socket failed at socket_handle!\n");
         return NULL;
     }
 
-    int option = 1;
-    if (setsockopt(socket_handle, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1)
+    struct timeval timeout;
+    timeout.tv_sec = 5; // 5 Sekunden timeout
+    timeout.tv_usec = 0; // Keine Microsekunden
+    if (setsockopt(socket_handle, SOL_SOCKET, SO_REUSEADDR, &timeout, sizeof(timeout)) == -1)
     {
         close(socket_handle);
         freeaddrinfo(addr_info);
-        printf("create_socket failed at setsockopt!");
+        printf("create_socket failed at setsockopt!\n");
         return NULL;
     }
 
@@ -38,7 +42,7 @@ Websocket* create_socket(const char *ip, const char *port) {
     {
         close(socket_handle);
         freeaddrinfo(addr_info);
-        printf("create_socket failed at bind!");
+        printf("create_socket failed at bind!\n");
         return NULL;
     }
 
@@ -54,7 +58,7 @@ Websocket* create_socket(const char *ip, const char *port) {
             close(socket_handle);
             freeaddrinfo(addr_info);
             free(websocket);
-            printf("create_socket failed at allocating socketId!");
+            printf("create_socket failed at allocating socketId!\n");
             return NULL;
         }
         *websocket->socketId = socket_handle;
@@ -67,7 +71,7 @@ Websocket* create_socket(const char *ip, const char *port) {
             freeaddrinfo(addr_info);
             free(websocket->socketId);
             free(websocket);
-            printf("create_socket failed at allocating isConnected!");
+            printf("create_socket failed at allocating isConnected!\n");
             return NULL;
         }
         *websocket->isConnected = false;
@@ -76,7 +80,7 @@ Websocket* create_socket(const char *ip, const char *port) {
     {
         close(socket_handle);
         freeaddrinfo(addr_info);
-        printf("create_socket failed at allocating websocket!");
+        printf("create_socket failed at allocating websocket!\n");
         return NULL;
     }
 
@@ -104,12 +108,12 @@ void close_socket(Websocket* socket)
     if (socket == NULL) return;
     if (*socket->isConnected == false)
     {
-        printf("Calling close_socket but socket is not connected!");
+        printf("Calling close_socket but socket is not connected!\n");
         return;
     }
     if (socket->socketId == NULL)
     {
-        printf("Calling close_socket but socketId is NULL!");
+        printf("Calling close_socket but socketId is NULL!\n");
         return;
     }
 
@@ -121,25 +125,54 @@ bool connect_socket(Websocket* socket) {
 
     if (listen(*socket->socketId, 10) == -1)
     {
-        printf("Failed to listen to the websocket!");
+        printf("Failed to listen to the websocket!\n");
         return false;
     }
     *socket->isConnected = true;
+    printf("Connected websocket on ws id %d\n", *socket->socketId);
 
-    while (*socket->isConnected == false)
+    while (*socket->isConnected)
     {
-        struct sockaddr_storage client_info;
+        struct sockaddr_in client_info;
         socklen_t client_info_groesse = sizeof(client_info);
 
-        //Akzeptiert neue Verbindungen n shit
-        int client_socket = accept(*socket->socketId, (struct sockaddr *)&client_info, &client_info_groesse);
+        // Accept new clients
+        int client_socket = accept(*socket->socketId, (struct sockaddr *) &client_info, &client_info_groesse);
         if (client_socket == -1)
         {
-            printf("Failed to accept sockets!");
-            return false;
+            printf("Did not receive client\n");
+            continue;
         }
+        char *client_ip = inet_ntoa(client_info.sin_addr);
+        int client_port = ntohs(client_info.sin_port);
+        printf("Client connected: %s:%d\n", client_ip, client_port);
+
+        handle_client(client_socket);
     }
 
-    printf("Connected websocket on ws id %d", *socket->socketId);
+    printf("Websocket disconnected\n");
     return true;
+}
+
+void handle_client(int client_socket)
+{
+    char buffer[BUFFER_SIZE];
+    long bytes_buffer;
+
+    // Read bytes
+    bytes_buffer = recv(client_socket, buffer, sizeof(buffer) -1, 0);
+    if (bytes_buffer == -1)
+    {
+        printf("Did not receive shit\n");
+        close(client_socket);
+        return;
+    }
+    buffer[bytes_buffer] = '\0';
+    printf("Message received: %s\n", buffer);
+
+    const char *response = "Message received.";
+    send(client_socket, response, strlen(response), 0);
+    printf("Response sent: %s\n", response);
+
+    close(client_socket);
 }
