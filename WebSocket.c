@@ -157,22 +157,37 @@ bool connect_socket(Websocket* socket) {
 void handle_client(int client_socket)
 {
     char buffer[BUFFER_SIZE];
+    const char *response = "Reply\r\n\r\n";
     long bytes_buffer;
 
+    static char byte_cache[BUFFER_SIZE] = {0};
+    char buffer_comb[BUFFER_SIZE * 2] = {0}; // Creates a new buffer to append the other bytes from receive of before in case of incompletion
+
     // Read bytes
-    bytes_buffer = recv(client_socket, buffer, sizeof(buffer) -1, 0);
+    // As long as there are bytes receivable
+    while ((bytes_buffer = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0)
+    {
+        buffer[bytes_buffer] = '\0'; // Isolate received bytes
+        snprintf(buffer_comb, sizeof(buffer_comb), "%s%s", byte_cache, buffer); // write to buffer_combined
+
+        char *start = buffer_comb;
+        char *end;
+        // Substring to iterate through packets received
+        while ((end = strstr(start, "\r\n\r\n")) != NULL)
+        {
+            *end = '\0'; // null term to isolate packet
+            printf("HTTP Paket received: %s\n", start);
+            send(client_socket, response, strlen(response), 0);
+            start = end + 4; // Skip \r\n...
+        }
+        strcpy(byte_cache, start); // Copy to cache
+    }
+
     if (bytes_buffer == -1)
     {
-        printf("Did not receive shit\n");
+        printf("Error on receiving bytes\n");
         close(client_socket);
         return;
     }
-    buffer[bytes_buffer] = '\0';
-    printf("Message received: %s\n", buffer);
-
-    const char *response = "Message received.";
-    send(client_socket, response, strlen(response), 0);
-    printf("Response sent: %s\n", response);
-
     close(client_socket);
 }
