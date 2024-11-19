@@ -246,10 +246,9 @@ void client_response(int client_socket, int status_code, const char *phrase)
     char response[BUFFER_SIZE];
     snprintf(response, sizeof(response),
              "HTTP/1.1 %d %s\r\n"
-             "Content-Length: %ld\r\n"
-             "Content-Type: text/plain\r\n\r\n"
-             "%s",
-             status_code, phrase, strlen(phrase), phrase);
+             "Content-Length: 0\r\n"
+             "Content-Type: text/plain\r\n\r\n",
+             status_code, phrase);
     send(client_socket, response, strlen(response), 0);
     printf("Response sent: %s\n", response);
 }
