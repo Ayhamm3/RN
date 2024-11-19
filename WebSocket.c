@@ -246,7 +246,7 @@ void client_response(int client_socket, int status_code, const char *phrase)
     char response[BUFFER_SIZE];
     snprintf(response, sizeof(response),
              "HTTP/1.1 %d %s\r\n"
-             "Content-Length: 0\r\n"
+             "Content-Length: 0\r\n" // When adding http body later, need to replace this and adjust the method
              "Content-Type: text/plain\r\n\r\n",
              status_code, phrase);
     send(client_socket, response, strlen(response), 0);
