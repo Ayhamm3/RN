@@ -225,21 +225,27 @@ int handle_http_packet(int client_socket, char *packet)
         return 400;
     }
 
+    // Easier to implement more routes later to define them in segments
+    char *segments[BUFFER_SIZE];
+    int segment_count = 0;
+
+    char *token = strtok(uri, "/");
+    while (token != NULL && segment_count < BUFFER_SIZE)
+    {
+        segments[segment_count++] = token;
+        token = strtok(NULL, "/");
+    }
+
     // Handle the method
     if (strcmp(method, "GET") == 0)
     {
-        // Easier to implement more routes later to define them in segments
-        char *segments[BUFFER_SIZE];
-        int segment_count = 0;
-
-        char *token = strtok(uri, "/");
-        while (token != NULL && segment_count < BUFFER_SIZE)
+        if (segment_count <= 0)
         {
-            segments[segment_count++] = token;
-            token = strtok(NULL, "/");
+            client_response(client_socket, 404, "Not Found", NULL);
+            return 404;
         }
 
-        if (segment_count > 0 && strcmp(segments[0], "static") == 0) // Static route
+        if (strcmp(segments[0], "static") == 0) // Static route
         {
             const char *path = segments[1]; // Path wird nach /static/ extrahiert
             if (strcmp(path, "foo") == 0)
@@ -262,6 +268,28 @@ int handle_http_packet(int client_socket, char *packet)
                 client_response(client_socket, 404, "Not Found", NULL);
                 return 404;
             }
+        }
+        else if (strcmp(segments[0], "dynamic") == 0)
+        {
+            // GET DYNAMIC CODE
+        }
+        else
+        {
+            client_response(client_socket, 404, "Not Found", NULL);
+            return 404;
+        }
+    }
+    else if (strcmp(method, "POST") == 0)
+    {
+        if (segment_count <= 0)
+        {
+            client_response(client_socket, 404, "Not Found", NULL);
+            return 404;
+        }
+
+        if (strcmp(segments[0], "dynamic") == 0)
+        {
+            // POST DYNAMIC CODE
         }
         else
         {
