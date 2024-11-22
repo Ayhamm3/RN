@@ -192,9 +192,6 @@ void handle_client(int client_socket)
     close(client_socket);
 }
 
-/// Handles the http packet and sends an http status code
-/// \param packet packet to process
-/// \return HTTP status code
 int handle_http_packet(int client_socket, char *packet)
 {
     char *line = strtok(packet, "\r\n"); // first line
@@ -209,7 +206,7 @@ int handle_http_packet(int client_socket, char *packet)
 
     printf("First line: method: %s uri: %s version: %s\n", method, uri, version);
 
-    //Header
+    // Header
     // NULL here since strtok is already taking it from the first line request before
     bool areHeadersValid = true;
     while ((line = strtok(NULL, "\r\n")))
@@ -231,9 +228,20 @@ int handle_http_packet(int client_socket, char *packet)
     // Handle the method
     if (strcmp(method, "GET") == 0)
     {
-        if (strncmp(uri, "/static/", 8) == 0) //Überprüft statische Inhalte
+        // Easier to implement more routes later to define them in segments
+        char *segments[BUFFER_SIZE];
+        int segment_count = 0;
+
+        char *token = strtok(uri, "/");
+        while (token != NULL && segment_count < BUFFER_SIZE)
         {
-            const char *path = uri + 8; //Path wird nach /static/ extrahiert
+            segments[segment_count++] = token;
+            token = strtok(NULL, "/");
+        }
+
+        if (segment_count > 0 && strcmp(segments[0], "static") == 0) // Static route
+        {
+            const char *path = segments[1]; // Path wird nach /static/ extrahiert
             if (strcmp(path, "foo") == 0)
             {
                 client_response(client_socket, 200, "OK", "Foo");
@@ -270,15 +278,15 @@ int handle_http_packet(int client_socket, char *packet)
 void client_response(int client_socket, int status_code, const char *phrase, const char *body)
 {
     char response[BUFFER_SIZE];
-    int body_length = 0;
+    size_t body_length = 0;
     if (body != NULL)
         body_length = strlen(body);
     else
-        body = "";
+        body = ""; //Set body to empty if body == null to prevent being printed "null" in body part
 
     snprintf(response, sizeof(response),
              "HTTP/1.1 %d %s\r\n"
-             "Content-Length: %d\r\n"
+             "Content-Length: %zu\r\n"
              "Content-Type: text/plain\r\n\r\n"
              "%s",
              status_code, phrase, body_length, body);

@@ -20,5 +20,8 @@ void close_socket(Websocket* socket);
 /// \return If success return true, otherwise false.
 bool connect_socket(Websocket* socket);
 void handle_client(int client_socket);
+/// Handles the http packet and sends an http status code
+/// \param packet packet to process
+/// \return HTTP status code
 int handle_http_packet(int client_socket, char *packet);
 void client_response(int client_socket, int status_code, const char *phrase, const char *body);
