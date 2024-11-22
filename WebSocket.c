@@ -200,55 +200,105 @@ int handle_http_packet(int client_socket, char *packet)
     char *line = strtok(packet, "\r\n"); // first line
     char method[BUFFER_SIZE], uri[BUFFER_SIZE], version[BUFFER_SIZE];
 
-    //First line
+    // First line
     if (!line || (sscanf(line, "%s %s %s", method, uri, version) != 3))
     {
-        client_response(client_socket, 400, "Bad Request");
+        client_response(client_socket, 400, "Bad Request", NULL);
         return 400;
     }
 
-    printf("First line: method: %s uri: %s version: %s", method, uri, version);
+    printf("First line: method: %s uri: %s version: %s\n", method, uri, version);
 
     //Header
     // NULL here since strtok is already taking it from the first line request before
     bool areHeadersValid = true;
-    while((line = strtok(NULL, "\r\n")))
+    while ((line = strtok(NULL, "\r\n")))
     {
-        const char *seperator = strchr(line, ':');
-        if (!seperator || seperator < line || *(seperator + 1) == '\0')
+        const char *separator = strchr(line, ':');
+        if (!separator || separator < line || *(separator + 1) == '\0')
         {
             areHeadersValid = false;
             break;
         }
     }
-    
+
     if (!areHeadersValid)
     {
-        client_response(client_socket, 400, "Bad Request");
+        client_response(client_socket, 400, "Bad Request", NULL);
         return 400;
     }
 
     // Handle the method
     if (strcmp(method, "GET") == 0)
     {
-        client_response(client_socket, 404, "Not Found");
-        return 404;
+        if (strncmp(uri, "/static/", 8) == 0) //Überprüft statische Inhalte
+        {
+            const char *path = uri + 8; //Path wird nach /static/ extrahiert
+            if (strcmp(path, "foo") == 0)
+            {
+                client_response(client_socket, 200, "OK", "Foo");
+                return 200;
+            }
+            else if (strcmp(path, "bar") == 0)
+            {
+                client_response(client_socket, 200, "OK", "Bar");
+                return 200;
+            }
+            else if (strcmp(path, "baz") == 0)
+            {
+                client_response(client_socket, 200, "OK", "Baz");
+                return 200;
+            }
+            else
+            {
+                client_response(client_socket, 404, "Not Found", NULL);
+                return 404;
+            }
+        }
+        else
+        {
+            client_response(client_socket, 404, "Not Found", NULL);
+            return 404;
+        }
     }
     else
     {
-        client_response(client_socket, 501, "Not Implemented");
+        client_response(client_socket, 501, "Not Implemented", NULL);
         return 501;
     }
 }
 
-void client_response(int client_socket, int status_code, const char *phrase)
+void client_response(int client_socket, int status_code, const char *phrase, const char *body)
 {
     char response[BUFFER_SIZE];
-    snprintf(response, sizeof(response),
-             "HTTP/1.1 %d %s\r\n"
-             "Content-Length: 0\r\n" // When adding http body later, need to replace this and adjust the method
-             "Content-Type: text/plain\r\n\r\n",
-             status_code, phrase);
+    int body_length;
+if (body != NULL)
+{
+    body_length = strlen(body);
+}
+else
+{
+    body_length = 0;
+}
+ //berechnet Body länge Falls body ungleich 0 ist
+ //kann verbessert werden (if else unnötig)
+    if (body && body_length > 0)
+    {
+        snprintf(response, sizeof(response),
+                 "HTTP/1.1 %d %s\r\n"
+                 "Content-Length: %d\r\n"
+                 "Content-Type: text/plain\r\n\r\n"
+                 "%s",
+                 status_code, phrase, body_length, body);
+    }
+    else
+    {
+        snprintf(response, sizeof(response),
+                 "HTTP/1.1 %d %s\r\n"
+                 "Content-Length: 0\r\n"
+                 "Content-Type: text/plain\r\n\r\n",
+                 status_code, phrase);
+    }
     send(client_socket, response, strlen(response), 0);
     printf("Response sent: %s\n", response);
 }
