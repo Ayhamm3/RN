@@ -267,38 +267,21 @@ int handle_http_packet(int client_socket, char *packet)
         return 501;
     }
 }
-
 void client_response(int client_socket, int status_code, const char *phrase, const char *body)
 {
     char response[BUFFER_SIZE];
-    int body_length;
-if (body != NULL)
-{
-    body_length = strlen(body);
-}
-else
-{
-    body_length = 0;
-}
- //berechnet Body länge Falls body ungleich 0 ist
- //kann verbessert werden (if else unnötig)
-    if (body && body_length > 0)
-    {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 %d %s\r\n"
-                 "Content-Length: %d\r\n"
-                 "Content-Type: text/plain\r\n\r\n"
-                 "%s",
-                 status_code, phrase, body_length, body);
-    }
+    int body_length = 0;
+    if (body != NULL)
+        body_length = strlen(body);
     else
-    {
-        snprintf(response, sizeof(response),
-                 "HTTP/1.1 %d %s\r\n"
-                 "Content-Length: 0\r\n"
-                 "Content-Type: text/plain\r\n\r\n",
-                 status_code, phrase);
-    }
+        body = "";
+
+    snprintf(response, sizeof(response),
+             "HTTP/1.1 %d %s\r\n"
+             "Content-Length: %d\r\n"
+             "Content-Type: text/plain\r\n\r\n"
+             "%s",
+             status_code, phrase, body_length, body);
     send(client_socket, response, strlen(response), 0);
     printf("Response sent: %s\n", response);
 }
