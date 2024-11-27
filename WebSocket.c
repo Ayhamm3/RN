@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200112L
+#define _DEFAULT_SOURCE
 #include "headers/WebSocket.h"
 #include <netdb.h>
 #include <sys/socket.h>
@@ -196,6 +198,7 @@ int handle_http_packet(int client_socket, char *packet)
 {
     char *line = strtok(packet, "\r\n"); // first line
     char method[BUFFER_SIZE], uri[BUFFER_SIZE], version[BUFFER_SIZE];
+    char body[BUFFER_SIZE] = {0};
 
     // First line
     if (!line || (sscanf(line, "%s %s %s", method, uri, version) != 3))
@@ -206,9 +209,10 @@ int handle_http_packet(int client_socket, char *packet)
 
     printf("First line: method: %s uri: %s version: %s\n", method, uri, version);
 
-    // Header
+    // Header + Body
     // NULL here since strtok is already taking it from the first line request before
     bool areHeadersValid = true;
+    int contentLen = 0;
     while ((line = strtok(NULL, "\r\n")))
     {
         const char *separator = strchr(line, ':');
@@ -217,12 +221,27 @@ int handle_http_packet(int client_socket, char *packet)
             areHeadersValid = false;
             break;
         }
+
+        // Parse content lenght
+        if (strncasecmp(line, "Content-Length:", 15) == 0)
+        {
+            contentLen = atoi(line + 15);
+        }
     }
 
     if (!areHeadersValid)
     {
         client_response(client_socket, 400, "Bad Request", NULL);
         return 400;
+    }
+
+    // Read the body if Content-Length is specified
+    if (contentLen > 0)
+    {
+        char *body_start = packet + strlen(packet) + 1; // include null termination
+        strncpy(body, body_start, contentLen); // copy into body
+        body[contentLen] = '\0'; // null termination
+        printf("Body: %s\n", body);
     }
 
     // Easier to implement more routes later to define them in segments
@@ -272,6 +291,23 @@ int handle_http_packet(int client_socket, char *packet)
         else if (strcmp(segments[0], "dynamic") == 0)
         {
             // GET DYNAMIC CODE
+            FILE *file;
+            char buffer[BUFFER_SIZE];
+            if ((file = fopen(segments[1], "r")))
+            {
+                while(fgets(buffer, 100, file))
+                {
+                    printf("%s", buffer);
+                }
+                fclose(file);
+                client_response(client_socket, 200, "OK", buffer);
+                return 200;
+            }
+            else
+            {
+                client_response(client_socket, 404, "Not Found", NULL);
+                return 404;
+            }
         }
         else
         {
@@ -279,7 +315,7 @@ int handle_http_packet(int client_socket, char *packet)
             return 404;
         }
     }
-    else if (strcmp(method, "POST") == 0)
+    else if (strcmp(method, "PUT") == 0)
     {
         if (segment_count <= 0)
         {
@@ -289,11 +325,61 @@ int handle_http_packet(int client_socket, char *packet)
 
         if (strcmp(segments[0], "dynamic") == 0)
         {
-            // POST DYNAMIC CODE
+            FILE *file;
+            if ((file = fopen(segments[1], "r")) == NULL) // If file not exists yet (201)
+            {
+                fclose(file);
+                if ((file = fopen(segments[1], "w")))
+                {
+                    fprintf(file, body); // ADD BODY TO WRITE HERE
+                    fclose(file);
+                    client_response(client_socket, 201, "Created", NULL);
+                    return 201;
+                }
+            }
+            else // File exists and gets overwritten (204)
+            {
+                if ((file = fopen(segments[1], "w")))
+                {
+                    fprintf(file, body); // ADD BODY TO WRITE HERE
+                    fclose(file);
+                    client_response(client_socket, 204, "No Content", NULL);
+                    return 204;
+                }
+            }
         }
         else
         {
+            client_response(client_socket, 403, "Forbidden", NULL);
+            return 404;
+        }
+    }
+    else if (strcmp(method, "DELETE") == 0)
+    {
+        if (segment_count <= 0)
+        {
             client_response(client_socket, 404, "Not Found", NULL);
+            return 404;
+        }
+
+        if (strcmp(segments[0], "dynamic") == 0)
+        {
+            // DELETE DYNAMIC CODE
+            FILE *file;
+            if (remove(segments[1]))
+            {
+                client_response(client_socket, 204, "No Content", NULL);
+                return 204;
+            }
+            else
+            {
+                client_response(client_socket, 404, "Not Found", NULL);
+                return 404;
+            }
+        }
+        else
+        {
+            client_response(client_socket, 403, "Forbidden", NULL);
             return 404;
         }
     }
