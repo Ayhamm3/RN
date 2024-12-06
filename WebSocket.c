@@ -1,16 +1,14 @@
 #define _POSIX_C_SOURCE 200112L
 #define _DEFAULT_SOURCE
+
 #include "headers/WebSocket.h"
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <malloc.h>
 #include <arpa/inet.h>
 #include <string.h>
-
-#define STATIC_PATH "C:\\Users\\A\\Desktop\\RN-main\\static" 
-#define DYNAMIC_PATH "C:\\Users\\A\\Desktop\\RN-main\\dynamic"
+#include <stdlib.h>
 
 
 Websocket* create_socket(const char *ip, const char *port) {
@@ -62,8 +60,7 @@ Websocket* create_socket(const char *ip, const char *port) {
         if (websocket->socketId == NULL)
         {
             close(socket_handle);
-            freeaddrinfo(addr_info);
-            free(websocket);
+            free_socket(websocket);
             printf("create_socket failed at allocating socketId!\n");
             return NULL;
         }
@@ -74,13 +71,20 @@ Websocket* create_socket(const char *ip, const char *port) {
         if (websocket->isConnected == NULL)
         {
             close(socket_handle);
-            freeaddrinfo(addr_info);
-            free(websocket->socketId);
-            free(websocket);
+            free_socket(websocket);
             printf("create_socket failed at allocating isConnected!\n");
             return NULL;
         }
         *websocket->isConnected = false;
+
+        websocket->content = create_content();
+        if (websocket->content == NULL)
+        {
+            close(socket_handle);
+            free_socket(websocket);
+            printf("create_socket failed at allocating content!\n");
+            return NULL;
+        }
     }
     else
     {
@@ -98,13 +102,15 @@ void free_socket(Websocket* socket)
     if (socket == NULL) return;
     if (socket->socketId != NULL)
     {
-        close(*(socket->socketId));
+        close_socket(socket);
         free(socket->socketId);
     }
     if (socket->isConnected != NULL)
         free(socket->isConnected);
     if (socket->addressInfo != NULL)
         freeaddrinfo(socket->addressInfo);
+    if (socket->content != NULL)
+        free(socket->content);
 
     free(socket);
 }
@@ -153,14 +159,14 @@ bool connect_socket(Websocket* socket) {
         int client_port = ntohs(client_info.sin_port);
         printf("Client connected: %s:%d\n", client_ip, client_port);
 
-        handle_client(client_socket);
+        handle_client(socket, client_socket);
     }
 
     printf("Websocket disconnected\n");
     return true;
 }
 
-void handle_client(int client_socket)
+void handle_client(Websocket* socket, int client_socket)
 {
     char buffer[BUFFER_SIZE];
     const char *response = "Reply\r\n\r\n";
@@ -183,7 +189,7 @@ void handle_client(int client_socket)
         {
             *end = '\0'; // null term to isolate packet
             printf("HTTP Paket received: %s\n", start);
-            handle_http_packet(client_socket, start);
+            handle_http_packet(socket, client_socket, start);
             start = end + 4; // Skip \r\n...
         }
         strcpy(byte_cache, start); // Copy to cache
@@ -198,7 +204,7 @@ void handle_client(int client_socket)
     close(client_socket);
 }
 
-int handle_http_packet(int client_socket, char *packet)
+int handle_http_packet(Websocket* socket, int client_socket, char *packet)
 {
     char *line = strtok(packet, "\r\n"); // first line
     char method[BUFFER_SIZE], uri[BUFFER_SIZE], version[BUFFER_SIZE];
@@ -238,7 +244,7 @@ int handle_http_packet(int client_socket, char *packet)
 
     if (contentLen > 0)
     {
-        char *body_start = packet + strlen(packet) + 1;
+        char *body_start = packet + strlen(packet) + 2;
         strncpy(body, body_start, contentLen);
         body[contentLen] = '\0';
         printf("Body: %s\n", body);
@@ -265,7 +271,6 @@ int handle_http_packet(int client_socket, char *packet)
 
         if (strcmp(segments[0], "static") == 0)
         {
-          
             const char *path = segments[1];
             if (strcmp(path, "foo") == 0)
             {
@@ -290,21 +295,16 @@ int handle_http_packet(int client_socket, char *packet)
         }
         else if (strcmp(segments[0], "dynamic") == 0)
         {
-            // Handle GET request for dynamic file
-            FILE *file;
-            char buffer[BUFFER_SIZE];
-            if ((file = fopen(segments[1], "r")) != NULL)
-            {
-                size_t bytes_read = fread(buffer, 1, sizeof(buffer), file);
-                buffer[bytes_read] = '\0'; // Ensure null termination
-                fclose(file);
-                client_response(client_socket, 200, "OK", buffer);
-                return 200;
-            }
-            else
+            char* content = get_content(socket->content, segments[1]);
+            if (content == 0)
             {
                 client_response(client_socket, 404, "Not Found", NULL);
                 return 404;
+            }
+            else
+            {
+                client_response(client_socket, 200, "OK", content);
+                return 200;
             }
         }
         else
@@ -323,26 +323,23 @@ int handle_http_packet(int client_socket, char *packet)
 
         if (strcmp(segments[0], "dynamic") == 0)
         {
-            
-            FILE *file = fopen(segments[1], "w");
-            if (file == NULL)
+            int code = set_content(socket->content, segments[1], body);
+            if (code == 201)
             {
-                client_response(client_socket, 500, "Internal Server Error", NULL);
-                return 500;
+                client_response(client_socket, 201, "Created", NULL);
+                return 201;
             }
 
-            fprintf(file, "%s", body);
-            fclose(file);
-
-            if (remove(segments[1]) == 0)
+            if (code == 204)
             {
                 client_response(client_socket, 204, "No Content", NULL);
                 return 204;
             }
-            else
+
+            if (code == 500)
             {
-                client_response(client_socket, 201, "Created", NULL);
-                return 201;
+                client_response(client_socket, 500, "Internal Server Error", NULL);
+                return 500;
             }
         }
         else
@@ -361,13 +358,13 @@ int handle_http_packet(int client_socket, char *packet)
 
         if (strcmp(segments[0], "dynamic") == 0)
         {
-            // DELETE request for dynamic file
-            if (remove(segments[1]) == 0)
+            int code = delete_content(socket->content, segments[1]);
+            if (code == 204)
             {
                 client_response(client_socket, 204, "No Content", NULL);
                 return 204;
             }
-            else
+            else if (code == 404)
             {
                 client_response(client_socket, 404, "Not Found", NULL); 
                 return 404;
@@ -379,11 +376,8 @@ int handle_http_packet(int client_socket, char *packet)
             return 403;
         }
     }
-    else
-    {
-        client_response(client_socket, 501, "Not Implemented", NULL);
-        return 501;
-    }
+    client_response(client_socket, 501, "Not Implemented", NULL);
+    return 501;
 }
 
 void client_response(int client_socket, int status_code, const char *phrase, const char *body)

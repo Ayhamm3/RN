@@ -1,7 +1,5 @@
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <netdb.h>
 #include <stdio.h>
 #include "headers/webserver.h"
 #include "headers/WebSocket.h"
@@ -28,5 +26,3 @@ int main(int argn, char *args[]) {
 
     return status;
 }
-
-
