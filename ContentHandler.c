@@ -38,7 +38,7 @@ char* get_content(WebSocketContent* socket, const char *address)
 {
     for(int i = 0; i < *(socket->size); i++)
     {
-        if (socket->content_address[i] == *address)
+        if (strcmp(socket->content_address[i], address) == 0)
         {
             return socket->content[i];
         }
@@ -84,7 +84,7 @@ int delete_content(WebSocketContent* socket, const char *address)
     int index = -1;
     for (int i = 0; i < *(socket->size); i++)
     {
-        if (socket->content_address[i] == *address)
+        if (strcmp(socket->content_address[i], address) == 0)
         {
             index = i;
             break;

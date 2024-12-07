@@ -169,30 +169,91 @@ bool connect_socket(Websocket* socket) {
 void handle_client(Websocket* socket, int client_socket)
 {
     char buffer[BUFFER_SIZE];
-    const char *response = "Reply\r\n\r\n";
+    static char byte_cache[BUFFER_SIZE * 4] = {0}; // Larger cache for body
     long bytes_buffer;
 
-    static char byte_cache[BUFFER_SIZE] = {0};
-    char buffer_comb[BUFFER_SIZE * 2] = {0}; // Creates a new buffer to append the other bytes from receive of before in case of incompletion
+    int total_received = 0;
+    int required_body_length = 0;
+    bool header_received = false;
 
-    // Read bytes
-    // As long as there are bytes receivable
+    // Read bytes from socket
     while ((bytes_buffer = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0)
     {
-        buffer[bytes_buffer] = '\0'; // Isolate received bytes
-        snprintf(buffer_comb, sizeof(buffer_comb), "%s%s", byte_cache, buffer); // write to buffer_combined
-
-        char *start = buffer_comb;
-        char *end;
-        // Substring to iterate through packets received
-        while ((end = strstr(start, "\r\n\r\n")) != NULL)
+        buffer[bytes_buffer] = '\0';
+        size_t current_len = strlen(byte_cache);
+        if (current_len + bytes_buffer < sizeof(byte_cache))
         {
-            *end = '\0'; // null term to isolate packet
-            printf("HTTP Paket received: %s\n", start);
-            handle_http_packet(socket, client_socket, start);
-            start = end + 4; // Skip \r\n...
+            strcat(byte_cache, buffer);
         }
-        strcpy(byte_cache, start); // Copy to cache
+        else
+        {
+            printf("Overflow in byte cache\n");
+            close(client_socket);
+            return;
+        }
+
+        // If header not there yet
+        if (!header_received)
+        {
+            // look for header end
+            char *header_end = strstr(byte_cache, "\r\n\r\n");
+            if (header_end != NULL)
+            {
+                // Header is now there
+                header_received = true;
+
+                // Isolate header
+                char header_copy[BUFFER_SIZE * 4];
+                strncpy(header_copy, byte_cache, sizeof(header_copy)-1);
+                header_copy[sizeof(header_copy)-1] = '\0';
+
+                // get header ending
+                char *end_of_header = strstr(header_copy, "\r\n\r\n");
+                if (end_of_header)
+                {
+                    *end_of_header = '\0';
+                }
+
+                // Parse Contentlenght
+                required_body_length = 0;
+                {
+                    char *line = strtok(header_copy, "\r\n");
+                    while (line != NULL)
+                    {
+                        if (strncasecmp(line, "Content-Length:", 15) == 0)
+                        {
+                            required_body_length = atoi(line + 15);
+                            break;
+                        }
+                        line = strtok(NULL, "\r\n");
+                    }
+                }
+            }
+        }
+
+        if (header_received)
+        {
+            // Header end for body
+            char *header_end = strstr(byte_cache, "\r\n\r\n");
+            if (header_end != NULL)
+            {
+                char *body_start = header_end + 4; // Body begins after \r\n\r\n
+                int body_received_len = (int)(strlen(byte_cache) - (body_start - byte_cache));
+                if (required_body_length == 0 || body_received_len >= required_body_length)
+                {
+                    // Request fullfilled, now can handle packet
+                    char request[BUFFER_SIZE * 4];
+                    strncpy(request, byte_cache, sizeof(request)-1);
+                    request[sizeof(request)-1] = '\0';
+
+                    handle_http_packet(socket, client_socket, request);
+
+                    memset(byte_cache, 0, sizeof(byte_cache));
+                    header_received = false;
+                    required_body_length = 0;
+                }
+            }
+        }
     }
 
     if (bytes_buffer == -1)
@@ -201,17 +262,28 @@ void handle_client(Websocket* socket, int client_socket)
         close(client_socket);
         return;
     }
+
     close(client_socket);
 }
 
 int handle_http_packet(Websocket* socket, int client_socket, char *packet)
 {
+    char *header_end = strstr(packet, "\r\n\r\n");
+    if (!header_end)
+    {
+        client_response(client_socket, 400, "Bad Request", NULL);
+        return 400;
+    }
+
+    *header_end = '\0';
+    char *body_start = header_end + 4;
+
     char *line = strtok(packet, "\r\n"); // first line
     char method[BUFFER_SIZE], uri[BUFFER_SIZE], version[BUFFER_SIZE];
     char body[BUFFER_SIZE] = {0};
 
 
-    if (!line || (sscanf(line, "%s %s %s", method, uri, version) != 3))
+    if (line == NULL || (sscanf(line, "%s %s %s", method, uri, version) != 3))
     {
         client_response(client_socket, 400, "Bad Request", NULL);
         return 400;
@@ -242,12 +314,14 @@ int handle_http_packet(Websocket* socket, int client_socket, char *packet)
         return 400;
     }
 
-    if (contentLen > 0)
+    if (header_end != NULL)
     {
-        char *body_start = packet + strlen(packet) + 2;
-        strncpy(body, body_start, contentLen);
-        body[contentLen] = '\0';
-        printf("Body: %s\n", body);
+        if (contentLen > 0)
+        {
+            strncpy(body, body_start, contentLen);
+            body[contentLen] = '\0';
+            printf("Body: %s\n", body);
+        }
     }
 
     // Split the URI into segments
